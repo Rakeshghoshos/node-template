@@ -1,0 +1,11 @@
+/.DS_Store
+/.env
+/node_modules
+/.vscode
+/importData
+/public
+/downloads
+/python/data_source/*
+/.vscode
+/logs
+/uploads
