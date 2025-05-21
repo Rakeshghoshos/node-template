@@ -1,0 +1,9 @@
+{
+    "ignore": [
+      "/uploads/*",  
+      "*.log",
+      "/python/*"
+
+    ],
+    "exec": "node app.js"
+}

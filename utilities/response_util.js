@@ -1,6 +1,5 @@
 const path = require("path");
 const fs = require("fs");
-let logger = require("./logger_util");
 let code = {
   success: 200,
   badRequest: 400,
@@ -43,19 +42,6 @@ module.exports = {
   },
   error: (err, res) => {
     console.log(err.message);
-    if (process.env.PROD != null && process.env.PROD == 1) {
-      logger.error(err.message, {
-        stackInfo: {
-          requestPath: res?.req?.originalUrl,
-          requestBody: res?.req?.body,
-          headersInfo: res?.req?.headers,
-          tokenInfo: res?.req?.token,
-          stack: err?.stack?.toString(),
-        },
-      });
-    } else {
-      console.log(err);
-    }
     return res.status(code.internalServerError).json({
       status: code.internalServerError,
       message: res.req.baseUrl.includes("riders") ? err : err.message,
