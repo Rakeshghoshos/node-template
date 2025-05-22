@@ -14,3 +14,8 @@ let nrPenetration = {
   2027: 0.99,
   2028: 0.99,
 };
+
+module.exports = {
+  ltePenetration,
+  nrPenetration,
+};

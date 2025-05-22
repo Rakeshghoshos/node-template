@@ -20,4 +20,7 @@ router.post("/saveMarketShareDetails", isAuthenticated, async (req, res) =>
   controller.insertMarketShareDetails(req, res)
 );
 
+router.post("/calculateVenueCapacity", isAuthenticated, async (req, res) =>
+  controller.calculateVenueCapacity(req, res)
+);
 module.exports = router;

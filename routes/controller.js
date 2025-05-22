@@ -2,6 +2,7 @@ const models = require("../models/index");
 const response = require("../utilities/response_util");
 let { encrypt, decrypt } = require("./../utilities/encryptor_util");
 const { generateAccessToken } = require("./../middlewares/auth");
+const constants = require("../core/constants");
 
 exports.registerUser = async (req, res) => {
   try {
@@ -186,17 +187,14 @@ exports.calculateVenueCapacity = async (req, res) => {
       return response.error("Missing required input fields", res);
     }
 
-    const marketShareModel = models.marketShare;
-    const venueProfileModel = models.venueProfile;
-    const spectrumSpeedModel = models.spectrumSpeed;
-    const venueCalculationModel = models.venueCalculations;
-
-    // Validate technology and band combinations
+    // Validate LTE spectrum combinations
+    const spectrumSpeeds = await models.spectrumSpeed.find().lean();
     for (const carrier of lteSpectrum) {
       if (carrier.technology !== "Not used") {
-        const isValid = lteSpectrumSpeedLookup.some(
+        const isValid = spectrumSpeeds.some(
           (spec) =>
-            spec.technology === carrier.technology && spec.band === carrier.band
+            spec.technology === carrier.technology &&
+            spec.band.includes(carrier.band)
         );
         if (!isValid) {
           return response.error(
@@ -207,22 +205,73 @@ exports.calculateVenueCapacity = async (req, res) => {
       }
     }
 
-    for (const carrier of nrSpectrum) {
-      if (carrier.technology !== "Not used") {
-        const isValid = nrSpectrumSpeedLookup.some(
-          (spec) =>
-            spec.technology === carrier.technology && spec.band === carrier.band
-        );
-        if (!isValid) {
-          return response.error(
-            `Invalid NR combination: ${carrier.technology}/${carrier.band}`,
-            res
+    // Validate NR spectrum combinations only if lteOnlyCalculations is false
+    if (!venueInformation.lteOnlyCalculations) {
+      for (const carrier of nrSpectrum) {
+        if (carrier.technology !== "Not used") {
+          const isValid = spectrumSpeeds.some(
+            (spec) =>
+              spec.technology === carrier.technology &&
+              spec.band.includes(carrier.band)
           );
+          if (!isValid) {
+            return response.error(
+              `Invalid NR combination: ${carrier.technology}/${carrier.band}`,
+              res
+            );
+          }
         }
       }
     }
 
-    // Calculate LTE and NR sectors
+    const ltePenetration = constants.ltePenetration;
+    const nrPenetration = constants.nrPenetration;
+    // Determine market share
+    let marketShare;
+    if (venueInformation.marketShare === "Custom") {
+      marketShare = venueInformation.customMarketShareValue;
+    } else {
+      const marketShareData = await models.marketShare
+        .findOne({
+          marketId: venueInformation.market,
+        })
+        .lean();
+      if (!marketShareData) {
+        return response.error(
+          `Market share data not found for market: ${venueInformation.market}`,
+          res
+        );
+      }
+      marketShare = marketShareData.TMOOnly / 100; // Convert percentage to decimal
+    }
+
+    // Determine venue profile
+    let venueProfile;
+    if (venueInformation.marketShare === "Custom") {
+      venueProfile = optional.customVenueProfile;
+    } else {
+      const profileData = await models.venueProfile
+        .findOne({
+          name: venueInformation.venueType,
+        })
+        .lean();
+      if (!profileData) {
+        return response.error(
+          `Venue profile not found for venue type: ${venueInformation.venueType}`,
+          res
+        );
+      }
+      venueProfile = {
+        averageTargetLteDlThroughput: profileData.dlLTESpeed,
+        averageTargetLteUlThroughput: profileData.ulLTESpeed,
+        averageTargetNrDlThroughput: profileData.dlNRSpeed,
+        averageTargetNrUlThroughput: profileData.upNRSpeed,
+        dlActivityFactor: profileData.dlActivityFactor / 100, // Convert percentage to decimal
+        ulActivityFactor: profileData.ulActivityFactor / 100, // Convert percentage to decimal
+      };
+    }
+
+    // Calculate sectors
     const results = {
       lteSectors: {},
       nrFr1Sectors: {},
@@ -231,14 +280,16 @@ exports.calculateVenueCapacity = async (req, res) => {
 
     const years = [2023, 2024, 2025, 2026, 2027, 2028];
     const attendees = venueInformation.totalAttendees;
-    const marketShare = venueInformation.customMarketShareValue;
-    const customProfile = optional.customVenueProfile;
 
     // LTE Calculations
     const lteDlSpeed = lteSpectrum.reduce((sum, carrier) => {
       if (carrier.technology !== "Not used") {
-        const spec = lteSpectrumSpeedLookup.find(
-          (s) => s.technology === carrier.technology && s.band === carrier.band
+        const spec = spectrumSpeeds.find(
+          (s) =>
+            s.technology?.toString() === carrier.technology?.toString() &&
+            s.band.includes(carrier.band) &&
+            s.systemType.toString() == carrier.systemType.toString() &&
+            s.bandwidth?.toString() == carrier.bandwidth?.toString()
         );
         return sum + (spec ? spec.dlSpeed : 0);
       }
@@ -247,8 +298,12 @@ exports.calculateVenueCapacity = async (req, res) => {
 
     const lteUlSpeed = lteSpectrum.reduce((sum, carrier) => {
       if (carrier.technology !== "Not used") {
-        const spec = lteSpectrumSpeedLookup.find(
-          (s) => s.technology === carrier.technology && s.band === carrier.band
+        const spec = spectrumSpeeds.find(
+          (s) =>
+            s.technology?.toString() === carrier.technology?.toString() &&
+            s.band.includes(carrier.band) &&
+            s.systemType.toString() == carrier.systemType.toString() &&
+            s.bandwidth?.toString() == carrier.bandwidth?.toString()
         );
         return sum + (spec ? spec.ulSpeed : 0);
       }
@@ -258,14 +313,14 @@ exports.calculateVenueCapacity = async (req, res) => {
     for (const year of years) {
       const lteSubs = attendees * marketShare * ltePenetration[year];
       const dlActivityFactor =
-        customProfile.dlActivityFactor * (1 + 0.1 * (year - 2023));
+        venueProfile.dlActivityFactor * (1 + 0.1 * (year - 2023));
       const ulActivityFactor =
-        customProfile.ulActivityFactor * (1 + 0.1 * (year - 2023));
+        venueProfile.ulActivityFactor * (1 + 0.1 * (year - 2023));
 
       const lteDlTraffic =
-        lteSubs * customProfile.averageTargetLteDlThroughput * dlActivityFactor;
+        lteSubs * venueProfile.averageTargetLteDlThroughput * dlActivityFactor;
       const lteUlTraffic =
-        lteSubs * customProfile.averageTargetLteUlThroughput * ulActivityFactor;
+        lteSubs * venueProfile.averageTargetLteUlThroughput * ulActivityFactor;
 
       results.lteSectors[year] = {
         dl: Math.ceil(lteDlTraffic / lteDlSpeed),
@@ -273,55 +328,65 @@ exports.calculateVenueCapacity = async (req, res) => {
       };
     }
 
-    // NR FR1 Calculations
-    const nrDlSpeed = nrSpectrum.reduce((sum, carrier) => {
-      if (carrier.technology !== "Not used") {
-        const spec = nrSpectrumSpeedLookup.find(
-          (s) => s.technology === carrier.technology && s.band === carrier.band
-        );
-        return sum + (spec ? spec.dlSpeed : 0);
+    // NR FR1 and FR2 Calculations (only if lteOnlyCalculations is false)
+    if (!venueInformation.lteOnlyCalculations) {
+      const nrDlSpeed = nrSpectrum.reduce((sum, carrier) => {
+        if (carrier.technology !== "Not used" && carrier.band !== "mmW") {
+          const spec = spectrumSpeeds.find(
+            (s) =>
+              s.technology?.toString() === carrier.technology?.toString() &&
+              s.band.includes(carrier.band) &&
+              s.systemType.toString() == carrier.systemType.toString() &&
+              s.bandwidth?.toString() == carrier.bandwidth?.toString()
+          );
+          return sum + (spec ? spec.dlSpeed : 0);
+        }
+        return sum;
+      }, 0);
+
+      const nrUlSpeed = nrSpectrum.reduce((sum, carrier) => {
+        if (carrier.technology !== "Not used" && carrier.band !== "mmW") {
+          const spec = spectrumSpeeds.find(
+            (s) =>
+              s.technology?.toString() === carrier.technology?.toString() &&
+              s.band.includes(carrier.band) &&
+              s.systemType.toString() == carrier.systemType.toString() &&
+              s.bandwidth?.toString() == carrier.bandwidth?.toString()
+          );
+          return sum + (spec ? spec.ulSpeed : 0);
+        }
+        return sum;
+      }, 0);
+
+      for (const year of years) {
+        const nrSubs = attendees * marketShare * nrPenetration[year];
+        const dlActivityFactor =
+          venueProfile.dlActivityFactor * (1 + 0.1 * (year - 2023));
+        const ulActivityFactor =
+          venueProfile.ulActivityFactor * (1 + 0.1 * (year - 2023));
+
+        const nrDlTraffic =
+          nrSubs * venueProfile.averageTargetNrDlThroughput * dlActivityFactor;
+        const nrUlTraffic =
+          nrSubs * venueProfile.averageTargetNrUlThroughput * ulActivityFactor;
+
+        results.nrFr1Sectors[year] = {
+          dl: Math.ceil(nrDlTraffic / nrDlSpeed),
+          ul: Math.ceil(nrUlTraffic / nrUlSpeed),
+        };
       }
-      return sum;
-    }, 0);
 
-    const nrUlSpeed = nrSpectrum.reduce((sum, carrier) => {
-      if (carrier.technology !== "Not used") {
-        const spec = nrSpectrumSpeedLookup.find(
-          (s) => s.technology === carrier.technology && s.band === carrier.band
-        );
-        return sum + (spec ? spec.ulSpeed : 0);
+      // NR FR2 Calculations
+      const mmWaveCoverage = venueInformation.areaCoverageByMmWave;
+      for (const year of years) {
+        results.nrFr2Sectors[year] = {
+          dl: mmWaveCoverage === 0 ? "Not Selected" : 0,
+          ul: mmWaveCoverage === 0 ? "Not Selected" : 0,
+        };
       }
-      return sum;
-    }, 0);
-
-    for (const year of years) {
-      const nrSubs = attendees * marketShare * nrPenetration[year];
-      const dlActivityFactor =
-        customProfile.dlActivityFactor * (1 + 0.1 * (year - 2023));
-      const ulActivityFactor =
-        customProfile.ulActivityFactor * (1 + 0.1 * (year - 2023));
-
-      const nrDlTraffic =
-        nrSubs * customProfile.averageTargetNrDlThroughput * dlActivityFactor;
-      const nrUlTraffic =
-        nrSubs * customProfile.averageTargetNrUlThroughput * ulActivityFactor;
-
-      results.nrFr1Sectors[year] = {
-        dl: Math.ceil(nrDlTraffic / nrDlSpeed),
-        ul: Math.ceil(nrUlTraffic / nrUlSpeed),
-      };
     }
 
-    // NR FR2 Calculations
-    const mmWaveCoverage = venueInformation.areaCoverageByMmWave;
-    for (const year of years) {
-      results.nrFr2Sectors[year] = {
-        dl: mmWaveCoverage === 0 ? "Not Selected" : 0,
-        ul: mmWaveCoverage === 0 ? "Not Selected" : 0,
-      };
-    }
-
-    // Store data in venueCalculations
+    // Store data in venueCapacity
     const venueCalcData = {
       venueInformation,
       lteSpectrum,
@@ -333,9 +398,7 @@ exports.calculateVenueCapacity = async (req, res) => {
       results,
     };
 
-    const savedCalc = await models.venueCalculations.create({
-      type: venueCalcData,
-    });
+    const savedCalc = await models.venueCapacity.create(venueCalcData);
 
     return response.success(
       "Calculations completed and stored successfully",
