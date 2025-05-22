@@ -5,14 +5,16 @@ const aggregatePaginate = require("mongoose-aggregate-paginate-v2");
 const Schema = mongoose.Schema;
 const schema = new Schema(
   {
-    marketId: { type: String, requred: true },
-    marketName: { type: String, requred: true },
-    extraDetails: { type: Schema.Types.Mixed, default: {} },
+    name: { type: String, default: "" },
+    mobile: { type: String, default: "" },
+    emailId: { type: String, required: true },
+    password: { type: String, default: "" },
+    role: { type: String, default: "" },
   },
   { timestamps: true, strict: false }
 );
 schema.plugin(mongoosePaginate);
 schema.plugin(aggregatePaginate);
-const market = mongoose.model("market", schema);
+const user = mongoose.model("user", schema);
 
-module.exports = market;
+module.exports = user;

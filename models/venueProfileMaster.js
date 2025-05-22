@@ -6,7 +6,7 @@ const Schema = mongoose.Schema;
 const schema = new Schema(
   {
     name: { type: String, required: true },
-    type: { type: string, required: true },
+    type: { type: String, required: true },
     dlLTESpeed: { type: Number, required: true }, //in kbps
     ulLTESpeed: { type: Number, required: true }, //in kbps
     dlNRSpeed: { type: Number, required: true }, //in kbps
@@ -22,4 +22,6 @@ const schema = new Schema(
 );
 schema.plugin(mongoosePaginate);
 schema.plugin(aggregatePaginate);
-module.exports = schema;
+const venueProfile = mongoose.model("venueProfile", schema);
+
+module.exports = venueProfile;

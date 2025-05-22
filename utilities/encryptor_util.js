@@ -32,13 +32,4 @@ const decrypt = (encryptedPassword, PASSWORD_SECRET = "") => {
   return finalDecPassword;
 };
 
-const verifyToken = (token) => {
-  const bytes = crypto_js.AES.decrypt(
-    token,
-    process.env.DISTRIBUTOR_HAWKER_SECRET
-  );
-  const decryptedData = JSON.parse(bytes.toString(crypto_js.enc.Utf8));
-  return decryptedData;
-};
-
-module.exports = { encrypt, decrypt, verifyToken };
+module.exports = { encrypt, decrypt };

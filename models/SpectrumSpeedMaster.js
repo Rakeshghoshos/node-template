@@ -18,7 +18,7 @@ const spectrumSpeedSchema = new mongoose.Schema({
     ],
   },
   band: {
-    type: String,
+    type: [String],
     required: true,
   },
   systemType: {
@@ -55,6 +55,6 @@ const spectrumSpeedSchema = new mongoose.Schema({
   },
 });
 
-const SpectrumSpeed = mongoose.model("SpectrumSpeed", spectrumSpeedSchema);
+const spectrumSpeed = mongoose.model("spectrumSpeed", spectrumSpeedSchema);
 
-module.exports = SpectrumSpeed;
+module.exports = spectrumSpeed;
