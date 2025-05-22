@@ -176,3 +176,174 @@ exports.insertMarketShareDetails = async (req, res) => {
     return response.error(error, res);
   }
 };
+
+exports.calculateVenueCapacity = async (req, res) => {
+  try {
+    const { venueInformation, lteSpectrum, nrSpectrum, optional } = req.body;
+
+    // Validate input structure
+    if (!venueInformation || !lteSpectrum || !nrSpectrum || !optional) {
+      return response.error("Missing required input fields", res);
+    }
+
+    const marketShareModel = models.marketShare;
+    const venueProfileModel = models.venueProfile;
+    const spectrumSpeedModel = models.spectrumSpeed;
+    const venueCalculationModel = models.venueCalculations;
+
+    // Validate technology and band combinations
+    for (const carrier of lteSpectrum) {
+      if (carrier.technology !== "Not used") {
+        const isValid = lteSpectrumSpeedLookup.some(
+          (spec) =>
+            spec.technology === carrier.technology && spec.band === carrier.band
+        );
+        if (!isValid) {
+          return response.error(
+            `Invalid LTE combination: ${carrier.technology}/${carrier.band}`,
+            res
+          );
+        }
+      }
+    }
+
+    for (const carrier of nrSpectrum) {
+      if (carrier.technology !== "Not used") {
+        const isValid = nrSpectrumSpeedLookup.some(
+          (spec) =>
+            spec.technology === carrier.technology && spec.band === carrier.band
+        );
+        if (!isValid) {
+          return response.error(
+            `Invalid NR combination: ${carrier.technology}/${carrier.band}`,
+            res
+          );
+        }
+      }
+    }
+
+    // Calculate LTE and NR sectors
+    const results = {
+      lteSectors: {},
+      nrFr1Sectors: {},
+      nrFr2Sectors: {},
+    };
+
+    const years = [2023, 2024, 2025, 2026, 2027, 2028];
+    const attendees = venueInformation.totalAttendees;
+    const marketShare = venueInformation.customMarketShareValue;
+    const customProfile = optional.customVenueProfile;
+
+    // LTE Calculations
+    const lteDlSpeed = lteSpectrum.reduce((sum, carrier) => {
+      if (carrier.technology !== "Not used") {
+        const spec = lteSpectrumSpeedLookup.find(
+          (s) => s.technology === carrier.technology && s.band === carrier.band
+        );
+        return sum + (spec ? spec.dlSpeed : 0);
+      }
+      return sum;
+    }, 0);
+
+    const lteUlSpeed = lteSpectrum.reduce((sum, carrier) => {
+      if (carrier.technology !== "Not used") {
+        const spec = lteSpectrumSpeedLookup.find(
+          (s) => s.technology === carrier.technology && s.band === carrier.band
+        );
+        return sum + (spec ? spec.ulSpeed : 0);
+      }
+      return sum;
+    }, 0);
+
+    for (const year of years) {
+      const lteSubs = attendees * marketShare * ltePenetration[year];
+      const dlActivityFactor =
+        customProfile.dlActivityFactor * (1 + 0.1 * (year - 2023));
+      const ulActivityFactor =
+        customProfile.ulActivityFactor * (1 + 0.1 * (year - 2023));
+
+      const lteDlTraffic =
+        lteSubs * customProfile.averageTargetLteDlThroughput * dlActivityFactor;
+      const lteUlTraffic =
+        lteSubs * customProfile.averageTargetLteUlThroughput * ulActivityFactor;
+
+      results.lteSectors[year] = {
+        dl: Math.ceil(lteDlTraffic / lteDlSpeed),
+        ul: Math.ceil(lteUlTraffic / lteUlSpeed),
+      };
+    }
+
+    // NR FR1 Calculations
+    const nrDlSpeed = nrSpectrum.reduce((sum, carrier) => {
+      if (carrier.technology !== "Not used") {
+        const spec = nrSpectrumSpeedLookup.find(
+          (s) => s.technology === carrier.technology && s.band === carrier.band
+        );
+        return sum + (spec ? spec.dlSpeed : 0);
+      }
+      return sum;
+    }, 0);
+
+    const nrUlSpeed = nrSpectrum.reduce((sum, carrier) => {
+      if (carrier.technology !== "Not used") {
+        const spec = nrSpectrumSpeedLookup.find(
+          (s) => s.technology === carrier.technology && s.band === carrier.band
+        );
+        return sum + (spec ? spec.ulSpeed : 0);
+      }
+      return sum;
+    }, 0);
+
+    for (const year of years) {
+      const nrSubs = attendees * marketShare * nrPenetration[year];
+      const dlActivityFactor =
+        customProfile.dlActivityFactor * (1 + 0.1 * (year - 2023));
+      const ulActivityFactor =
+        customProfile.ulActivityFactor * (1 + 0.1 * (year - 2023));
+
+      const nrDlTraffic =
+        nrSubs * customProfile.averageTargetNrDlThroughput * dlActivityFactor;
+      const nrUlTraffic =
+        nrSubs * customProfile.averageTargetNrUlThroughput * ulActivityFactor;
+
+      results.nrFr1Sectors[year] = {
+        dl: Math.ceil(nrDlTraffic / nrDlSpeed),
+        ul: Math.ceil(nrUlTraffic / nrUlSpeed),
+      };
+    }
+
+    // NR FR2 Calculations
+    const mmWaveCoverage = venueInformation.areaCoverageByMmWave;
+    for (const year of years) {
+      results.nrFr2Sectors[year] = {
+        dl: mmWaveCoverage === 0 ? "Not Selected" : 0,
+        ul: mmWaveCoverage === 0 ? "Not Selected" : 0,
+      };
+    }
+
+    // Store data in venueCalculations
+    const venueCalcData = {
+      venueInformation,
+      lteSpectrum,
+      nrSpectrum: {
+        fr1: nrSpectrum.filter((c) => c.band !== "mmW"),
+        fr2: nrSpectrum.filter((c) => c.band === "mmW"),
+      },
+      optional,
+      results,
+    };
+
+    const savedCalc = await models.venueCalculations.create({
+      type: venueCalcData,
+    });
+
+    return response.success(
+      "Calculations completed and stored successfully",
+      savedCalc,
+      res
+    );
+  } catch (error) {
+    console.error(error);
+    return response.error(error, res);
+  }
+};
