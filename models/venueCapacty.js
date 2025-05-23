@@ -26,6 +26,7 @@ const schema = new Schema(
       type: Schema.Types.Mixed,
       required: true,
     },
+    user: { type: Schema.Types.Mixed, required: true },
     extraDetails: {
       type: Schema.Types.Mixed,
       default: {},

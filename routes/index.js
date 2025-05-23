@@ -23,4 +23,7 @@ router.post("/saveMarketShareDetails", isAuthenticated, async (req, res) =>
 router.post("/calculateVenueCapacity", isAuthenticated, async (req, res) =>
   controller.calculateVenueCapacity(req, res)
 );
+router.post("/getVenueCapacities", isAuthenticated, async (req, res) =>
+  controller.getVenueCapacities(req, res)
+);
 module.exports = router;

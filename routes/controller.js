@@ -32,6 +32,7 @@ exports.registerUser = async (req, res) => {
     const userData = {
       id: savedUser._id,
       emailId: savedUser.emailId,
+      name: savedUser.name,
       role: savedUser.role,
     };
     const token = generateAccessToken(userData);
@@ -82,6 +83,7 @@ exports.loginUser = async (req, res) => {
     const userData = {
       id: user._id,
       emailId: user.emailId,
+      name: user.name,
       role: user.role,
     };
     const token = generateAccessToken(userData);
@@ -226,6 +228,7 @@ exports.calculateVenueCapacity = async (req, res) => {
 
     const ltePenetration = constants.ltePenetration;
     const nrPenetration = constants.nrPenetration;
+    const laaPenetration = constants.laaPenetration;
     // Determine market share
     let marketShare;
     if (venueInformation.marketShare === "Custom") {
@@ -282,7 +285,8 @@ exports.calculateVenueCapacity = async (req, res) => {
     const attendees = venueInformation.totalAttendees;
 
     // LTE Calculations
-    const lteDlSpeed = lteSpectrum.reduce((sum, carrier) => {
+    let LaaSpeed = 0;
+    let lteDlSpeed = lteSpectrum.reduce((sum, carrier) => {
       if (carrier.technology !== "Not used") {
         const spec = spectrumSpeeds.find(
           (s) =>
@@ -291,7 +295,11 @@ exports.calculateVenueCapacity = async (req, res) => {
             s.systemType.toString() == carrier.systemType.toString() &&
             s.bandwidth?.toString() == carrier.bandwidth?.toString()
         );
-        return sum + (spec ? spec.dlSpeed : 0);
+        if (spec.technology !== "LAA") {
+          return sum + (spec ? spec.dlSpeed : 0);
+        } else {
+          LaaSpeed = Number(spec.dlSpeed);
+        }
       }
       return sum;
     }, 0);
@@ -322,6 +330,9 @@ exports.calculateVenueCapacity = async (req, res) => {
       const lteUlTraffic =
         lteSubs * venueProfile.averageTargetLteUlThroughput * ulActivityFactor;
 
+      if (LaaSpeed != 0) {
+        lteDlSpeed += LaaSpeed * laaPenetration[year];
+      }
       results.lteSectors[year] = {
         dl: Math.ceil(lteDlTraffic / lteDlSpeed),
         ul: Math.ceil(lteUlTraffic / lteUlSpeed),
@@ -394,6 +405,7 @@ exports.calculateVenueCapacity = async (req, res) => {
         fr1: nrSpectrum.filter((c) => c.band !== "mmW"),
         fr2: nrSpectrum.filter((c) => c.band === "mmW"),
       },
+      user: req.token,
       optional,
       results,
     };
@@ -403,6 +415,48 @@ exports.calculateVenueCapacity = async (req, res) => {
     return response.success(
       "Calculations completed and stored successfully",
       savedCalc,
+      res
+    );
+  } catch (error) {
+    console.error(error);
+    return response.error(error, res);
+  }
+};
+
+exports.getVenueCapacities = async (req, res) => {
+  try {
+    // Extract query parameters
+    const { userId, page = 1, limit = 10 } = req.body;
+
+    // Pagination options
+    const options = {
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      sort: { createdAt: -1 }, // Sort by newest first
+      lean: true, // Return plain JavaScript objects
+    };
+
+    // Build query
+    const query = {};
+    if (userId) {
+      query["user.id"] = userId;
+    }
+
+    // Fetch paginated results
+    const result = await models.venueCapacity.paginate(query, options);
+
+    // Prepare response data
+    const responseData = {
+      totalDocs: result.totalDocs,
+      totalPages: result.totalPages,
+      page: result.page,
+      limit: result.limit,
+      docs: result.docs,
+    };
+
+    return response.success(
+      "Venue capacities retrieved successfully",
+      responseData,
       res
     );
   } catch (error) {
