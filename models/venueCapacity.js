@@ -1,22 +1,29 @@
 module.exports = (sequelize, DataTypes) => {
-  const MarketShare = sequelize.define(
-    "MarketShareMaster",
+  const VenueCapacity = sequelize.define(
+    "VenueCapacity",
     {
-      marketId: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-      },
-      TMOOnly: {
-        type: DataTypes.FLOAT,
+      venueInformation: {
+        type: DataTypes.JSONB,
         allowNull: false,
       },
-      SPROnly: {
-        type: DataTypes.FLOAT,
+      lteSpectrum: {
+        type: DataTypes.JSONB,
         allowNull: false,
       },
-      NTM: {
-        type: DataTypes.FLOAT,
+      nrSpectrum: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+      },
+      optional: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+      },
+      results: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+      },
+      user: {
+        type: DataTypes.JSONB,
         allowNull: false,
       },
       extraDetails: {
@@ -33,10 +40,10 @@ module.exports = (sequelize, DataTypes) => {
       },
     },
     {
-      tableName: "market_shares",
+      tableName: "venue_capacities",
       timestamps: true,
     }
   );
 
-  return MarketShare;
+  return VenueCapacity;
 };

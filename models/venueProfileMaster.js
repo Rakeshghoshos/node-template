@@ -1,27 +1,69 @@
-let mongoose = require("mongoose");
-const mongoosePaginate = require("mongoose-paginate-v2");
-const aggregatePaginate = require("mongoose-aggregate-paginate-v2");
+module.exports = (sequelize, DataTypes) => {
+  const VenueProfile = sequelize.define(
+    "VenueProfileMaster",
+    {
+      name: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      type: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      dlLTESpeed: {
+        type: DataTypes.FLOAT,
+        allowNull: false,
+      },
+      ulLTESpeed: {
+        type: DataTypes.FLOAT,
+        allowNull: false,
+      },
+      dlNRSpeed: {
+        type: DataTypes.FLOAT,
+        allowNull: false,
+      },
+      upNRSpeed: {
+        type: DataTypes.FLOAT,
+        allowNull: false,
+      },
+      dlFR2NRSpeed: {
+        type: DataTypes.FLOAT,
+        allowNull: false,
+      },
+      dlActivityFactor: {
+        type: DataTypes.FLOAT,
+        allowNull: false,
+      },
+      ulActivityFactor: {
+        type: DataTypes.FLOAT,
+        allowNull: false,
+      },
+      dlIncrease: {
+        type: DataTypes.FLOAT,
+        allowNull: false,
+      },
+      ulIncrease: {
+        type: DataTypes.FLOAT,
+        allowNull: false,
+      },
+      extraDetails: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+      },
+      createdAt: {
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW,
+      },
+      updatedAt: {
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW,
+      },
+    },
+    {
+      tableName: "venue_profiles",
+      timestamps: true,
+    }
+  );
 
-const Schema = mongoose.Schema;
-const schema = new Schema(
-  {
-    name: { type: String, required: true },
-    type: { type: String, required: true },
-    dlLTESpeed: { type: Number, required: true }, //in kbps
-    ulLTESpeed: { type: Number, required: true }, //in kbps
-    dlNRSpeed: { type: Number, required: true }, //in kbps
-    upNRSpeed: { type: Number, required: true }, //in kbps
-    dlFR2NRSpeed: { type: Number, required: true }, //in kbps
-    dlActivityFactor: { type: Number, required: true }, //in percent
-    ulActivityFactor: { type: Number, required: true }, //in percent
-    dlIncrease: { type: Number, required: true }, //in percent change YOY
-    ulIncrease: { type: Number, required: true }, //in percent change YOY
-    extraDetails: { type: Schema.Types.Mixed, default: {} },
-  },
-  { timestamps: true, strict: false }
-);
-schema.plugin(mongoosePaginate);
-schema.plugin(aggregatePaginate);
-const venueProfile = mongoose.model("venueProfile", schema);
-
-module.exports = venueProfile;
+  return VenueProfile;
+};

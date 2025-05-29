@@ -1,13 +1,19 @@
-const mongoose = require("mongoose");
+const { Sequelize } = require("sequelize");
 
 const initializeDB = async () => {
   try {
-    await mongoose.connect(process.env.database);
-    console.log("Database instances are active!");
+    const sequelize = new Sequelize(process.env.DATABASE_URL, {
+      dialect: "postgres",
+      logging: false, // Set to true to see SQL queries in the console
+    });
+
+    // Test the connection
+    await sequelize.authenticate();
+    console.log("Database connection has been established successfully.");
+    return sequelize;
   } catch (err) {
-    console.log(err.message);
-    console.log("Connection failed!");
-    process.exit(0);
+    console.error("Unable to connect to the database:", err.message);
+    process.exit(1);
   }
 };
 

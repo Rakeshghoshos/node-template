@@ -1,18 +1,34 @@
-let mongoose = require("mongoose");
-const mongoosePaginate = require("mongoose-paginate-v2");
-const aggregatePaginate = require("mongoose-aggregate-paginate-v2");
+module.exports = (sequelize, DataTypes) => {
+  const Market = sequelize.define(
+    "MarketMaster",
+    {
+      marketId: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+      },
+      marketName: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      extraDetails: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+      },
+      createdAt: {
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW,
+      },
+      updatedAt: {
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW,
+      },
+    },
+    {
+      tableName: "markets",
+      timestamps: true,
+    }
+  );
 
-const Schema = mongoose.Schema;
-const schema = new Schema(
-  {
-    marketId: { type: String, requred: true },
-    marketName: { type: String, requred: true },
-    extraDetails: { type: Schema.Types.Mixed, default: {} },
-  },
-  { timestamps: true, strict: false }
-);
-schema.plugin(mongoosePaginate);
-schema.plugin(aggregatePaginate);
-const market = mongoose.model("market", schema);
-
-module.exports = market;
+  return Market;
+};

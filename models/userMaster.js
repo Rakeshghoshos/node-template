@@ -1,20 +1,42 @@
-let mongoose = require("mongoose");
-const mongoosePaginate = require("mongoose-paginate-v2");
-const aggregatePaginate = require("mongoose-aggregate-paginate-v2");
+module.exports = (sequelize, DataTypes) => {
+  const User = sequelize.define(
+    "UserMaster",
+    {
+      name: {
+        type: DataTypes.STRING,
+        defaultValue: "",
+      },
+      mobile: {
+        type: DataTypes.STRING,
+        defaultValue: "",
+      },
+      emailId: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+      },
+      password: {
+        type: DataTypes.STRING,
+        defaultValue: "",
+      },
+      role: {
+        type: DataTypes.STRING,
+        defaultValue: "",
+      },
+      createdAt: {
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW,
+      },
+      updatedAt: {
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW,
+      },
+    },
+    {
+      tableName: "users",
+      timestamps: true,
+    }
+  );
 
-const Schema = mongoose.Schema;
-const schema = new Schema(
-  {
-    name: { type: String, default: "" },
-    mobile: { type: String, default: "" },
-    emailId: { type: String, required: true },
-    password: { type: String, default: "" },
-    role: { type: String, default: "" },
-  },
-  { timestamps: true, strict: false }
-);
-schema.plugin(mongoosePaginate);
-schema.plugin(aggregatePaginate);
-const user = mongoose.model("user", schema);
-
-module.exports = user;
+  return User;
+};

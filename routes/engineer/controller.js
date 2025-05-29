@@ -1,10 +1,10 @@
-const models = require("../models/index");
-const response = require("../utilities/response_util");
-let { encrypt, decrypt } = require("./../utilities/encryptor_util");
-const { generateAccessToken } = require("./../middlewares/auth");
-const constants = require("../core/constants");
+const response = require("../../utilities/response_util");
+let { encrypt, decrypt } = require("../../utilities/encryptor_util");
+const { generateAccessToken } = require("../../middlewares/auth");
+const constants = require("../../core/constants");
 
 exports.registerUser = async (req, res) => {
+  let models = global.modelsInstance;
   try {
     const { name, mobile, emailId, password, role } = req.body;
 
@@ -12,14 +12,14 @@ exports.registerUser = async (req, res) => {
       return response.error("Email and password are required", res);
     }
 
-    const existingUser = await models.user.findOne({ emailId });
+    const existingUser = await models.User.findOne({ where: { emailId } });
     if (existingUser) {
       return response.error("Email already registered", res);
     }
 
     const encryptedPassword = encrypt(password);
 
-    const user = new models.user({
+    const user = await models.User.create({
       name: name || "",
       mobile: mobile || "",
       emailId,
@@ -27,34 +27,33 @@ exports.registerUser = async (req, res) => {
       role: role || "",
     });
 
-    const savedUser = await user.save();
-
     const userData = {
-      id: savedUser._id,
-      emailId: savedUser.emailId,
-      name: savedUser.name,
-      role: savedUser.role,
+      id: user.id,
+      emailId: user.emailId,
+      name: user.name,
+      role: user.role,
     };
     const token = generateAccessToken(userData);
 
     const responseData = {
-      id: savedUser._id,
-      name: savedUser.name,
-      mobile: savedUser.mobile,
-      emailId: savedUser.emailId,
-      role: savedUser.role,
+      id: user.id,
+      name: user.name,
+      mobile: user.mobile,
+      emailId: user.emailId,
+      role: user.role,
       token,
     };
 
     return response.success("User registered successfully", responseData, res);
   } catch (error) {
     console.error(error);
-    return response.error(error, res);
+    return response.error(error.message, res);
   }
 };
 
 exports.loginUser = async (req, res) => {
   try {
+    let models = global.modelsInstance;
     const { emailId, mobile, password } = req.body;
 
     if (!password || (!emailId && !mobile)) {
@@ -67,8 +66,11 @@ exports.loginUser = async (req, res) => {
     if (emailId && mobile) {
       return response.error("Provide either email or mobile, not both", res);
     }
-    const user = await models.user.findOne({
-      $or: [{ emailId: emailId || "" }, { mobile: mobile || "" }],
+
+    const user = await models.User.findOne({
+      where: {
+        [emailId ? "emailId" : "mobile"]: emailId || mobile,
+      },
     });
 
     if (!user) {
@@ -81,16 +83,15 @@ exports.loginUser = async (req, res) => {
     }
 
     const userData = {
-      id: user._id,
+      id: user.id,
       emailId: user.emailId,
       name: user.name,
       role: user.role,
     };
     const token = generateAccessToken(userData);
 
-    // Prepare response data (exclude password)
     const responseData = {
-      id: user._id,
+      id: user.id,
       name: user.name,
       mobile: user.mobile,
       emailId: user.emailId,
@@ -101,28 +102,46 @@ exports.loginUser = async (req, res) => {
     return response.success("Login successful", responseData, res);
   } catch (error) {
     console.error(error);
-    return response.error(error, res);
+    return response.error(error.message, res);
   }
 };
 
 exports.insertspectrumSpeedDetails = async (req, res) => {
-  {
-    try {
-      const spectrumSpeeds = req.body;
+  try {
+    const spectrumSpeeds = req.body;
 
-      if (!Array.isArray(spectrumSpeeds)) {
-        return response.success("Request body must be an array", 0, res);
-      }
-
-      const insertedSpeeds = await models.spectrumSpeed.insertMany(
-        spectrumSpeeds
-      );
-
-      return response.success("inserted successfully", 1, res);
-    } catch (error) {
-      console.log(error);
-      return response.error(error, res);
+    // Validate that the request body is an array
+    if (!Array.isArray(spectrumSpeeds)) {
+      return response.error("Request body must be an array", res);
     }
+
+    // Pre-process each record to ensure band and carriersAvailable are arrays
+    const processedSpeeds = spectrumSpeeds.map((speed) => ({
+      ...speed,
+      band: Array.isArray(speed.band) ? speed.band : [speed.band], // Convert string to array if needed
+      carriersAvailable: Array.isArray(speed.carriersAvailable)
+        ? speed.carriersAvailable
+        : speed.carriersAvailable
+        ? [speed.carriersAvailable]
+        : [], // Handle undefined or string
+    }));
+
+    // Perform bulkCreate with processed data
+    const insertedSpeeds = await models.SpectrumSpeed.bulkCreate(
+      processedSpeeds,
+      {
+        validate: true, // Ensure model validations are applied
+      }
+    );
+
+    return response.success(
+      "Inserted successfully",
+      insertedSpeeds.length,
+      res
+    );
+  } catch (error) {
+    console.error("Error inserting spectrum speeds:", error);
+    return response.error(error.message, res);
   }
 };
 
@@ -134,14 +153,18 @@ exports.insertVenueProfileDetails = async (req, res) => {
       return response.success("Request body must be an array", 0, res);
     }
 
-    const insertedProfiles = await models.venueProfile.insertMany(
+    const insertedProfiles = await models.VenueProfile.bulkCreate(
       venueProfiles
     );
 
-    return response.success("Inserted successfully", 1, res);
+    return response.success(
+      "Inserted successfully",
+      insertedProfiles.length,
+      res
+    );
   } catch (error) {
     console.error(error);
-    return response.error(error, res);
+    return response.error(error.message, res);
   }
 };
 
@@ -153,14 +176,19 @@ exports.insertMarketDetails = async (req, res) => {
       return response.success("Request body must be an array", 0, res);
     }
 
-    const insertedMarkets = await models.market.insertMany(markets);
+    const insertedMarkets = await models.Market.bulkCreate(markets);
 
-    return response.success("Inserted successfully", 1, res);
+    return response.success(
+      "Inserted successfully",
+      insertedMarkets.length,
+      res
+    );
   } catch (error) {
     console.error(error);
-    return response.error(error, res);
+    return response.error(error.message, res);
   }
 };
+
 exports.insertMarketShareDetails = async (req, res) => {
   try {
     const marketShares = req.body;
@@ -169,14 +197,18 @@ exports.insertMarketShareDetails = async (req, res) => {
       return response.success("Request body must be an array", 0, res);
     }
 
-    const insertedMarketShares = await models.marketShare.insertMany(
+    const insertedMarketShares = await models.MarketShare.bulkCreate(
       marketShares
     );
 
-    return response.success("Inserted successfully", 1, res);
+    return response.success(
+      "Inserted successfully",
+      insertedMarketShares.length,
+      res
+    );
   } catch (error) {
     console.error(error);
-    return response.error(error, res);
+    return response.error(error.message, res);
   }
 };
 
@@ -190,7 +222,7 @@ exports.calculateVenueCapacity = async (req, res) => {
     }
 
     // Validate LTE spectrum combinations
-    const spectrumSpeeds = await models.spectrumSpeed.find().lean();
+    const spectrumSpeeds = await models.SpectrumSpeed.findAll();
     for (const carrier of lteSpectrum) {
       if (carrier.technology !== "Not used") {
         const isValid = spectrumSpeeds.some(
@@ -209,7 +241,7 @@ exports.calculateVenueCapacity = async (req, res) => {
 
     // Validate NR spectrum combinations only if lteOnlyCalculations is false
     if (!venueInformation.lteOnlyCalculations) {
-      for (const carrier of nrSpectrum) {
+      for (const carrier of nrSpectrum.fr1) {
         if (carrier.technology !== "Not used") {
           const isValid = spectrumSpeeds.some(
             (spec) =>
@@ -229,16 +261,15 @@ exports.calculateVenueCapacity = async (req, res) => {
     const ltePenetration = constants.ltePenetration;
     const nrPenetration = constants.nrPenetration;
     const laaPenetration = constants.laaPenetration;
+
     // Determine market share
     let marketShare;
     if (venueInformation.marketShare === "Custom") {
       marketShare = venueInformation.customMarketShareValue;
     } else {
-      const marketShareData = await models.marketShare
-        .findOne({
-          marketId: venueInformation.market,
-        })
-        .lean();
+      const marketShareData = await models.MarketShare.findOne({
+        where: { marketId: venueInformation.market },
+      });
       if (!marketShareData) {
         return response.error(
           `Market share data not found for market: ${venueInformation.market}`,
@@ -253,11 +284,9 @@ exports.calculateVenueCapacity = async (req, res) => {
     if (venueInformation.marketShare === "Custom") {
       venueProfile = optional.customVenueProfile;
     } else {
-      const profileData = await models.venueProfile
-        .findOne({
-          name: venueInformation.venueType,
-        })
-        .lean();
+      const profileData = await models.VenueProfile.findOne({
+        where: { name: venueInformation.venueType },
+      });
       if (!profileData) {
         return response.error(
           `Venue profile not found for venue type: ${venueInformation.venueType}`,
@@ -290,14 +319,14 @@ exports.calculateVenueCapacity = async (req, res) => {
       if (carrier.technology !== "Not used") {
         const spec = spectrumSpeeds.find(
           (s) =>
-            s.technology?.toString() === carrier.technology?.toString() &&
+            s.technology === carrier.technology &&
             s.band.includes(carrier.band) &&
-            s.systemType.toString() == carrier.systemType.toString() &&
-            s.bandwidth?.toString() == carrier.bandwidth?.toString()
+            s.systemType === carrier.systemType &&
+            s.bandwidth === carrier.bandwidth
         );
-        if (spec.technology !== "LAA") {
-          return sum + (spec ? spec.dlSpeed : 0);
-        } else {
+        if (spec && spec.technology !== "LAA") {
+          return sum + spec.dlSpeed;
+        } else if (spec) {
           LaaSpeed = Number(spec.dlSpeed);
         }
       }
@@ -308,10 +337,10 @@ exports.calculateVenueCapacity = async (req, res) => {
       if (carrier.technology !== "Not used") {
         const spec = spectrumSpeeds.find(
           (s) =>
-            s.technology?.toString() === carrier.technology?.toString() &&
+            s.technology === carrier.technology &&
             s.band.includes(carrier.band) &&
-            s.systemType.toString() == carrier.systemType.toString() &&
-            s.bandwidth?.toString() == carrier.bandwidth?.toString()
+            s.systemType === carrier.systemType &&
+            s.bandwidth === carrier.bandwidth
         );
         return sum + (spec ? spec.ulSpeed : 0);
       }
@@ -330,7 +359,7 @@ exports.calculateVenueCapacity = async (req, res) => {
       const lteUlTraffic =
         lteSubs * venueProfile.averageTargetLteUlThroughput * ulActivityFactor;
 
-      if (LaaSpeed != 0) {
+      if (LaaSpeed !== 0) {
         lteDlSpeed += LaaSpeed * laaPenetration[year];
       }
       results.lteSectors[year] = {
@@ -341,28 +370,28 @@ exports.calculateVenueCapacity = async (req, res) => {
 
     // NR FR1 and FR2 Calculations (only if lteOnlyCalculations is false)
     if (!venueInformation.lteOnlyCalculations) {
-      const nrDlSpeed = nrSpectrum.reduce((sum, carrier) => {
+      const nrDlSpeed = nrSpectrum.fr1.reduce((sum, carrier) => {
         if (carrier.technology !== "Not used" && carrier.band !== "mmW") {
           const spec = spectrumSpeeds.find(
             (s) =>
-              s.technology?.toString() === carrier.technology?.toString() &&
+              s.technology === carrier.technology &&
               s.band.includes(carrier.band) &&
-              s.systemType.toString() == carrier.systemType.toString() &&
-              s.bandwidth?.toString() == carrier.bandwidth?.toString()
+              s.systemType === carrier.systemType &&
+              s.bandwidth === carrier.bandwidth
           );
           return sum + (spec ? spec.dlSpeed : 0);
         }
         return sum;
       }, 0);
 
-      const nrUlSpeed = nrSpectrum.reduce((sum, carrier) => {
+      const nrUlSpeed = nrSpectrum.fr1.reduce((sum, carrier) => {
         if (carrier.technology !== "Not used" && carrier.band !== "mmW") {
           const spec = spectrumSpeeds.find(
             (s) =>
-              s.technology?.toString() === carrier.technology?.toString() &&
+              s.technology === carrier.technology &&
               s.band.includes(carrier.band) &&
-              s.systemType.toString() == carrier.systemType.toString() &&
-              s.bandwidth?.toString() == carrier.bandwidth?.toString()
+              s.systemType === carrier.systemType &&
+              s.bandwidth === carrier.bandwidth
           );
           return sum + (spec ? spec.ulSpeed : 0);
         }
@@ -401,16 +430,13 @@ exports.calculateVenueCapacity = async (req, res) => {
     const venueCalcData = {
       venueInformation,
       lteSpectrum,
-      nrSpectrum: {
-        fr1: nrSpectrum.filter((c) => c.band !== "mmW"),
-        fr2: nrSpectrum.filter((c) => c.band === "mmW"),
-      },
+      nrSpectrum,
       user: req.token,
       optional,
       results,
     };
 
-    const savedCalc = await models.venueCapacity.create(venueCalcData);
+    const savedCalc = await models.VenueCapacity.create(venueCalcData);
 
     return response.success(
       "Calculations completed and stored successfully",
@@ -419,7 +445,7 @@ exports.calculateVenueCapacity = async (req, res) => {
     );
   } catch (error) {
     console.error(error);
-    return response.error(error, res);
+    return response.error(error.message, res);
   }
 };
 
@@ -429,29 +455,29 @@ exports.getVenueCapacities = async (req, res) => {
     const { userId, page = 1, limit = 10 } = req.body;
 
     // Pagination options
-    const options = {
-      page: parseInt(page, 10),
-      limit: parseInt(limit, 10),
-      sort: { createdAt: -1 }, // Sort by newest first
-      lean: true, // Return plain JavaScript objects
-    };
+    const offset = (page - 1) * limit;
 
     // Build query
-    const query = {};
+    const where = {};
     if (userId) {
-      query["user.id"] = userId;
+      where["user.id"] = userId; // Access JSONB field
     }
 
     // Fetch paginated results
-    const result = await models.venueCapacity.paginate(query, options);
+    const { count, rows } = await models.VenueCapacity.findAndCountAll({
+      where,
+      limit,
+      offset,
+      order: [["createdAt", "DESC"]],
+    });
 
     // Prepare response data
     const responseData = {
-      totalDocs: result.totalDocs,
-      totalPages: result.totalPages,
-      page: result.page,
-      limit: result.limit,
-      docs: result.docs,
+      totalDocs: count,
+      totalPages: Math.ceil(count / limit),
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      docs: rows,
     };
 
     return response.success(
@@ -461,6 +487,6 @@ exports.getVenueCapacities = async (req, res) => {
     );
   } catch (error) {
     console.error(error);
-    return response.error(error, res);
+    return response.error(error.message, res);
   }
 };
